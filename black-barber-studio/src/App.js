@@ -9,7 +9,7 @@ const ALL_SERVICES = [
   { id: 6, name: "Corte | Cejas | Barba", price: "35.000", priceNum: 35000, duration: 50, icon: "🪒", category: "Cortes" },
   { id: 7, name: "Corte | Limpieza Facial", price: "45.000", priceNum: 45000, duration: 60, icon: "🧖", category: "Cortes" },
   { id: 8, name: "Diseño", price: "7.000", priceNum: 7000, duration: 15, icon: "🎨", category: "Asesoría" },
-  { id: 9, name: "Cejas", price: "7.000", priceNum: 7000, duration: 15, icon: "👁️", category: "Asesoría" },
+  { id: 9, name: "Cejas", price: "7.000", priceNum: 7000, duration: 15, icon: "", category: "Asesoría" },
   { id: 10, name: "Barba", price: "10.000", priceNum: 10000, duration: 20, icon: "🪒", category: "Asesoría" },
   { id: 11, name: "Limpieza Facial", price: "20.000", priceNum: 20000, duration: 40, icon: "🧖", category: "Asesoría" },
   { id: 12, name: "Membresía Black", price: "0 (Promo)", priceNum: 0, duration: 10, icon: "⭐", category: "Promoción", promo: true, promoOriginal: "22.000", promoUntil: "30/11/2026" },
