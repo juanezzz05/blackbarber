@@ -29,7 +29,7 @@ const DAYS_ES=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 const DAYS_FULL=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 const MONTHS_ES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const SK="bbs_v3";
-const DCFG={weeklyDays:[1,2,3,4,5,6],startHour:9,endHour:19,slotMinutes:30,bufferMinutes:0,pin:"1234",recoveryEmail:"",recoveryPhone:"",blockedDates:{},customHours:{},blockedTimeRanges:[],customPricing:{}};
+const DCFG={weeklyDays:[1,2,3,4,5,6],startHour:9,endHour:19,slotMinutes:30,bufferMinutes:0,pin:"1234",recoveryEmail:"",recoveryPhone:"",blockedDates:{},customHours:{},blockedTimeRanges:[],customPricing:{},whatsappBarber:"",instagramUser:"",tiktokUser:""};
 
 const toStr=d=>d.toISOString().split("T")[0];
 const fmtDate=str=>{const d=new Date(str+"T12:00:00");return DAYS_FULL[d.getDay()]+" "+d.getDate()+" de "+MONTHS_ES[d.getMonth()];};
@@ -80,6 +80,8 @@ export default function App(){
   const[pricingDate,setPricingDate]=useState(null);
   const[pricingEdits,setPricingEdits]=useState({});
   const[statsRange,setStatsRange]=useState("month");
+  const[myPhoneInput,setMyPhoneInput]=useState("");
+  const[myPhone,setMyPhone]=useState("");
 
   useEffect(()=>{const d=storage.get(SK);if(d){if(d.a)setAppts(d.a);if(d.c)setCfg({...DCFG,...d.c});if(d.r)setRevs(d.r);}},[]);
   const save=useCallback((a,c,r)=>storage.set(SK,{a,c,r}),[]);
@@ -109,7 +111,7 @@ export default function App(){
     if(!cName.trim()||!cPhone.trim()){notify("Completa nombre y teléfono","err");return;}
     const dstr=toStr(selDate),fp=getPrice(selSvc,dstr);
     const n={id:Date.now(),serviceId:selSvc.id,service:selSvc.name,price:fmtPrice(fp),priceNum:fp,duration:selSvc.duration,date:dstr,timeSlot:selTime,clientName:cName.trim(),clientPhone:cPhone.trim(),status:"confirmed",createdAt:new Date().toISOString(),rated:false};
-    const u=[...appts,n];setAppts(u);save(u,cfg,revs);setConfirm(n);setView("confirm");setCName("");setCPhone("");
+    const u=[...appts,n];setAppts(u);save(u,cfg,revs);setConfirm(n);setView("confirm");setCName("");setCPhone("");notifyBarber(n);
   };
   const cancel=id=>{const u=appts.map(a=>a.id===id?{...a,status:"cancelled"}:a);setAppts(u);save(u,cfg,revs);notify("Cita cancelada");};
 
@@ -131,6 +133,10 @@ export default function App(){
   const rmTimeBlock=id=>{const nc={...cfg,blockedTimeRanges:(cfg.blockedTimeRanges||[]).filter(b=>b.id!==id)};setCfg(nc);save(appts,nc,revs);notify("Franja eliminada");};
   const savePricing=ds=>{const ex=cfg.customPricing[ds]||{},merged={...ex};Object.entries(pricingEdits).forEach(([sid,val])=>{if(val===""||val===null)delete merged[sid];else merged[sid]=parseInt(val);});const nc={...cfg,customPricing:{...cfg.customPricing,[ds]:merged}};if(!Object.keys(merged).length)delete nc.customPricing[ds];setCfg(nc);save(appts,nc,revs);setPricingDate(null);setPricingEdits({});notify("Precios guardados");};
   const rmPricing=ds=>{const cp={...cfg.customPricing};delete cp[ds];const nc={...cfg,customPricing:cp};setCfg(nc);save(appts,nc,revs);notify("Precios eliminados");};
+
+  const exportData=()=>{const d=JSON.stringify({a:appts,c:cfg,r:revs},null,2);const b=new Blob([d],{type:"application/json"});const u=URL.createObjectURL(b);const l=document.createElement("a");l.href=u;l.download="blackbarber-backup-"+toStr(new Date())+".json";l.click();URL.revokeObjectURL(u);notify("Datos exportados");};
+  const importData=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const na=d.a||[];const nc={...DCFG,...(d.c||{})};const nr=d.r||[];setAppts(na);setCfg(nc);setRevs(nr);save(na,nc,nr);notify("Datos importados ✓");}catch{notify("Error al importar","err");}};r.readAsText(f);e.target.value="";};
+  const notifyBarber=(n)=>{const wn=(cfg.whatsappBarber||"").replace(/\D/g,"");if(!wn)return;const wm=encodeURIComponent("🔔 *Nueva Cita - Black Barber Studio*\n✂️ "+n.service+"\n📅 "+fmtDate(n.date)+"\n⏰ "+n.timeSlot+"\n👤 "+n.clientName+"\n📞 "+n.clientPhone+"\n💰 $"+n.price);window.open("https://wa.me/"+wn+"?text="+wm,"_blank");};
 
   const today=toStr(new Date());
   const upcoming=appts.filter(a=>a.date>=today&&a.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date)||a.timeSlot.localeCompare(b.timeSlot));
@@ -183,7 +189,7 @@ export default function App(){
           </div>
         </div>
         <div style={{display:"flex",justifyContent:"center",gap:14,margin:"16px 0 24px"}}>
-          {[["📱","WhatsApp",SHOP.whatsapp],["📸","Instagram",SHOP.instagram],["🎵","TikTok",SHOP.tiktok],["📍","Maps",SHOP.mapsUrl]].map(([ic,lb,hr])=>(
+          {[["📱","WhatsApp",cfg.whatsappBarber?"https://wa.me/"+cfg.whatsappBarber.replace(/\D/g,""):SHOP.whatsapp],["📸","Instagram",cfg.instagramUser?"https://instagram.com/"+cfg.instagramUser:SHOP.instagram],["🎵","TikTok",cfg.tiktokUser?"https://tiktok.com/@"+cfg.tiktokUser:SHOP.tiktok],["📍","Maps",SHOP.mapsUrl]].map(([ic,lb,hr])=>(
             <a key={lb} href={hr} target="_blank" rel="noopener noreferrer" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,textDecoration:"none",color:"#aaa",fontSize:10,fontWeight:600}}>
               <div style={{width:44,height:44,borderRadius:12,background:"rgba(57,255,20,.08)",border:"1px solid rgba(57,255,20,.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{ic}</div><span>{lb}</span></a>))}
         </div>
@@ -224,12 +230,16 @@ export default function App(){
         <div style={{...crd,background:"rgba(57,255,20,.06)",border:"1px solid rgba(57,255,20,.2)",textAlign:"left",padding:22}}>
           {[["SERVICIO",confirm.service,"#fff"],["FECHA",fmtDate(confirm.date),"#fff"],["HORA",confirm.timeSlot,G],["PRECIO","$ "+confirm.price,G],["CLIENTE",confirm.clientName+" — "+confirm.clientPhone,"#fff"]].map(([l,v,c])=><div key={l} style={{marginBottom:14}}><div style={{fontSize:10,color:"#666",letterSpacing:2}}>{l}</div><div style={{color:c,fontWeight:700,fontSize:l==="HORA"?20:15}}>{v}</div></div>)}
         </div>
-        <button onClick={()=>{setView("home");setConfirm(null);setSelSvc(null);}} style={{...ob,marginTop:24}}>VOLVER AL INICIO</button>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:24}}>
+          <a href={"https://wa.me/"+(cfg.whatsappBarber||"").replace(/\D/g,"")+"?text="+encodeURIComponent("✅ *Confirmación de cita*\n✂️ "+confirm.service+"\n📅 "+fmtDate(confirm.date)+"\n⏰ "+confirm.timeSlot+"\n💰 $"+confirm.price+"\n👤 "+confirm.clientName+"\n📞 "+confirm.clientPhone)} target="_blank" rel="noopener noreferrer" style={{...pb,textDecoration:"none",display:"block",textAlign:"center",background:"linear-gradient(135deg,#25D366,#128C7E)"}}>💬 REENVIAR AL BARBERO</a>
+          <button onClick={()=>{setView("home");setConfirm(null);setSelSvc(null);}} style={ob}>VOLVER AL INICIO</button>
+        </div>
       </div>}
 
       {/* ADMIN */}
       {view==="admin"&&admin&&<div style={{padding:"0 20px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"16px 0"}}><button onClick={()=>setView("home")} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:14,fontWeight:600}}>← Inicio</button><h2 style={{color:"#fff",fontSize:17,fontWeight:800,margin:0}}>Panel Admin</h2><button onClick={()=>{setAdmin(false);setView("home");}} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:12,fontWeight:600}}>Salir</button></div>
+        {cfg.pin==="1234"&&<div style={{padding:"10px 14px",borderRadius:10,background:"rgba(255,200,0,.08)",border:"1px solid rgba(255,200,0,.25)",marginBottom:10,textAlign:"center"}}><span style={{color:"#FFD700",fontSize:12,fontWeight:600}}>⚠️ Estás usando el PIN por defecto. Cámbialo en ⚙️ Config.</span></div>}
         <div style={{display:"flex",gap:4,marginBottom:16,flexWrap:"wrap"}}>{[["citas","📅 Citas"],["cal","🗓️ Calendario"],["stats","📊 Stats"],["revs","⭐ Reseñas"],["cfg","⚙️ Config"]].map(([k,l])=>(<button key={k} onClick={()=>setATab(k)} style={{flex:"1 1 auto",padding:"10px 4px",borderRadius:10,cursor:"pointer",fontSize:10,fontWeight:700,background:aTab===k?"rgba(57,255,20,.15)":"rgba(255,255,255,.04)",border:aTab===k?"1px solid "+G:"1px solid rgba(255,255,255,.06)",color:aTab===k?G:"#888"}}>{l}</button>))}</div>
 
         {aTab==="citas"&&<><span style={lbl}>Citas próximas ({upcoming.length})</span>{upcoming.length===0?<p style={{color:"#666",fontSize:14,textAlign:"center",padding:20}}>No hay citas</p>:upcoming.map(a=>(<div key={a.id} style={crd}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontWeight:700,color:"#fff",fontSize:14}}>{a.service}</span><span style={{color:G,fontWeight:700}}>{a.timeSlot}</span></div><div style={{fontSize:12,color:"#888"}}>📅 {fmtDate(a.date)} • 💰 $ {a.price}</div><div style={{fontSize:12,color:"#aaa",margin:"4px 0 8px"}}>👤 {a.clientName} — 📞 {a.clientPhone}</div><button onClick={()=>cancel(a.id)} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #ff4444",background:"transparent",color:"#ff4444",fontSize:11,cursor:"pointer",fontWeight:600}}>Cancelar</button></div>))}</>}
@@ -268,15 +278,40 @@ export default function App(){
           <div style={crd}><div style={{fontSize:12,color:"#888",marginBottom:6}}>Horario base</div><div style={{color:"#fff",fontWeight:600}}>{cfg.startHour}:00 — {cfg.endHour}:00</div></div>
           <div style={crd}><div style={{fontSize:12,color:"#888",marginBottom:6}}>Slots / Buffer</div><div style={{color:"#fff",fontWeight:600}}>Cada {cfg.slotMinutes} min • {cfg.bufferMinutes||0} min descanso</div></div>
           <div style={crd}><div style={{fontSize:12,color:"#888",marginBottom:6}}>Recuperación</div><div style={{color:"#fff",fontSize:13}}>{cfg.recoveryEmail||cfg.recoveryPhone?"✅ Configurado":"⚠️ No configurado"}</div></div>
+          <div style={{...crd,marginTop:6}}><div style={{fontSize:12,color:"#888",marginBottom:6}}>Redes sociales</div><div style={{color:"#fff",fontSize:12}}>{cfg.whatsappBarber||<span style={{color:"#555"}}>WhatsApp no configurado</span>}</div><div style={{color:"#fff",fontSize:12,marginTop:4}}>{cfg.instagramUser?"@"+cfg.instagramUser:<span style={{color:"#555"}}>Instagram no configurado</span>}</div><div style={{color:"#fff",fontSize:12,marginTop:4}}>{cfg.tiktokUser?"@"+cfg.tiktokUser:<span style={{color:"#555"}}>TikTok no configurado</span>}</div></div>
           <button onClick={()=>setCfgEdit({...cfg})} style={{...pb,marginTop:10}}>EDITAR</button>
+          <div style={{display:"flex",gap:8,marginTop:10}}>
+            <button onClick={exportData} style={{flex:1,padding:12,borderRadius:10,border:"1px solid "+G,background:"transparent",color:G,fontWeight:700,cursor:"pointer",fontSize:12}}>⬇️ Exportar datos</button>
+            <label style={{flex:1,padding:12,borderRadius:10,border:"1px solid rgba(57,255,20,.4)",background:"transparent",color:G,fontWeight:700,cursor:"pointer",fontSize:12,textAlign:"center",display:"block"}}>⬆️ Importar datos<input type="file" accept=".json" onChange={importData} style={{display:"none"}}/></label>
+          </div>
         </>:<div style={{...crd,background:"rgba(0,0,0,.5)",border:"1px solid rgba(57,255,20,.2)"}}>
           <div style={{marginBottom:16}}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:8}}>Días:</label><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{DAYS_ES.map((d,i)=>(<button key={i} onClick={()=>{const days=cfgEdit.weeklyDays.includes(i)?cfgEdit.weeklyDays.filter(x=>x!==i):[...cfgEdit.weeklyDays,i].sort();setCfgEdit({...cfgEdit,weeklyDays:days});}} style={{padding:"8px 12px",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,background:cfgEdit.weeklyDays.includes(i)?G:"rgba(255,255,255,.06)",border:"none",color:cfgEdit.weeklyDays.includes(i)?"#000":"#888"}}>{d}</button>))}</div></div>
           <div style={{display:"flex",gap:12,marginBottom:16}}>{[["Inicio","startHour"],["Cierre","endHour"]].map(([l,k])=>(<div key={k} style={{flex:1}}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>{l}:</label><select value={cfgEdit[k]} onChange={e=>setCfgEdit({...cfgEdit,[k]:+e.target.value})} style={{...smSel,width:"100%"}}>{Array.from({length:18},(_,i)=>i+5).map(h=><option key={h} value={h} style={{background:"#111"}}>{h}:00</option>)}</select></div>))}</div>
           <div style={{display:"flex",gap:12,marginBottom:16}}><div style={{flex:1}}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Slot:</label><select value={cfgEdit.slotMinutes} onChange={e=>setCfgEdit({...cfgEdit,slotMinutes:+e.target.value})} style={{...smSel,width:"100%"}}>{[15,20,30,45,60].map(m=><option key={m} value={m} style={{background:"#111"}}>{m} min</option>)}</select></div><div style={{flex:1}}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>Buffer:</label><select value={cfgEdit.bufferMinutes||0} onChange={e=>setCfgEdit({...cfgEdit,bufferMinutes:+e.target.value})} style={{...smSel,width:"100%"}}>{[0,5,10,15,20,30,45,60,90,120].map(m=><option key={m} value={m} style={{background:"#111"}}>{m===0?"0 min":m+" min"}</option>)}</select></div></div>
           <div style={{marginBottom:16}}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>PIN:</label><input type="text" value={cfgEdit.pin} onChange={e=>setCfgEdit({...cfgEdit,pin:e.target.value})} style={inp}/></div>
           <div style={{padding:14,borderRadius:12,background:"rgba(57,255,20,.04)",border:"1px solid rgba(57,255,20,.1)",marginBottom:16}}><label style={{fontSize:12,color:G,display:"block",marginBottom:8,fontWeight:700}}>🔐 Recuperación</label><input type="email" placeholder="Correo" value={cfgEdit.recoveryEmail||""} onChange={e=>setCfgEdit({...cfgEdit,recoveryEmail:e.target.value})} style={inp}/><input type="tel" placeholder="Teléfono" value={cfgEdit.recoveryPhone||""} onChange={e=>setCfgEdit({...cfgEdit,recoveryPhone:e.target.value})} style={{...inp,marginBottom:0}}/></div>
+          <div style={{padding:14,borderRadius:12,background:"rgba(37,211,102,.04)",border:"1px solid rgba(37,211,102,.15)",marginBottom:16}}><label style={{fontSize:12,color:"#25D366",display:"block",marginBottom:8,fontWeight:700}}>📱 Redes sociales</label><input type="tel" placeholder="WhatsApp barbero (ej: 573001234567)" value={cfgEdit.whatsappBarber||""} onChange={e=>setCfgEdit({...cfgEdit,whatsappBarber:e.target.value})} style={inp}/><input type="text" placeholder="Instagram (usuario sin @)" value={cfgEdit.instagramUser||""} onChange={e=>setCfgEdit({...cfgEdit,instagramUser:e.target.value})} style={inp}/><input type="text" placeholder="TikTok (usuario sin @)" value={cfgEdit.tiktokUser||""} onChange={e=>setCfgEdit({...cfgEdit,tiktokUser:e.target.value})} style={{...inp,marginBottom:0}}/></div>
           <div style={{display:"flex",gap:10}}><button onClick={saveCfg} style={{flex:1,padding:12,borderRadius:10,border:"none",cursor:"pointer",background:G,color:"#000",fontWeight:700}}>Guardar</button><button onClick={()=>setCfgEdit(null)} style={{flex:1,padding:12,borderRadius:10,cursor:"pointer",background:"transparent",border:"1px solid #888",color:"#888",fontWeight:600}}>Cancelar</button></div>
         </div>}</>}
+      </div>}
+
+      {/* MIS CITAS */}
+      {view==="mycitas"&&<div style={{padding:"0 20px"}}>
+        <div style={{textAlign:"center",paddingTop:28,paddingBottom:4}}><h2 style={{color:"#fff",fontSize:20,fontWeight:800,margin:0}}>📋 Mis Citas</h2><p style={{color:"#888",fontSize:13,marginTop:6}}>Ingresa tu número para ver tus reservas</p></div>
+        <div style={{display:"flex",gap:8,margin:"16px 0"}}>
+          <input type="tel" placeholder="Tu número de teléfono" value={myPhoneInput} onChange={e=>setMyPhoneInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&setMyPhone(myPhoneInput.trim())} style={{...inp,marginBottom:0,flex:1}}/>
+          <button onClick={()=>setMyPhone(myPhoneInput.trim())} style={{padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",background:G,color:"#000",fontWeight:800,fontSize:14}}>Buscar</button>
+        </div>
+        {myPhone&&(()=>{
+          const mine=appts.filter(a=>a.clientPhone===myPhone).sort((a,b)=>b.date.localeCompare(a.date)||b.timeSlot.localeCompare(a.timeSlot));
+          if(!mine.length)return<p style={{color:"#666",fontSize:14,textAlign:"center",padding:30}}>No se encontraron citas para este número.</p>;
+          const upcoming2=mine.filter(a=>a.date>=today&&a.status!=="cancelled");
+          const past2=mine.filter(a=>a.date<today||a.status==="cancelled");
+          return(<>
+            {upcoming2.length>0&&<><span style={lbl}>Próximas ({upcoming2.length})</span>{upcoming2.map(a=>(<div key={a.id} style={crd}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontWeight:700,color:"#fff",fontSize:14}}>{a.service}</span><span style={{color:G,fontWeight:700}}>{a.timeSlot}</span></div><div style={{fontSize:12,color:"#888"}}>📅 {fmtDate(a.date)} • 💰 ${a.price}</div><div style={{display:"flex",gap:8,marginTop:8}}><button onClick={()=>cancel(a.id)} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #ff4444",background:"transparent",color:"#ff4444",fontSize:11,cursor:"pointer",fontWeight:600}}>Cancelar</button>{!a.rated&&a.date<=today&&<button onClick={()=>{setRateData({id:a.id,stars:0,comment:""});setShowRate(true);}} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #FFD700",background:"transparent",color:"#FFD700",fontSize:11,cursor:"pointer",fontWeight:600}}>⭐ Calificar</button>}</div></div>))}</>}
+            {past2.length>0&&<><span style={{...lbl,marginTop:upcoming2.length?12:0}}>Historial ({past2.length})</span>{past2.map(a=>(<div key={a.id} style={{...crd,opacity:0.65}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontWeight:700,color:"#fff",fontSize:13}}>{a.service}</span><span style={{color:a.status==="cancelled"?"#ff4444":"#888",fontSize:12,fontWeight:600}}>{a.status==="cancelled"?"Cancelada":a.timeSlot}</span></div><div style={{fontSize:12,color:"#666"}}>📅 {fmtDate(a.date)} • 💰 ${a.price}</div>{!a.rated&&a.status!=="cancelled"&&<button onClick={()=>{setRateData({id:a.id,stars:0,comment:""});setShowRate(true);}} style={{marginTop:6,padding:"5px 12px",borderRadius:8,border:"1px solid #FFD700",background:"transparent",color:"#FFD700",fontSize:11,cursor:"pointer",fontWeight:600}}>⭐ Calificar</button>}</div>))}</>}
+          </>);
+        })()}
       </div>}
 
       {/* MODALS */}
@@ -292,7 +327,11 @@ export default function App(){
 
       {showRate&&<div style={ov}><div style={{...mod,textAlign:"center"}}><div style={{fontSize:32,marginBottom:8}}>⭐</div><h3 style={{color:"#fff",margin:"0 0 16px"}}>¿Cómo fue tu experiencia?</h3><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Stars value={rateData.stars} onChange={v=>setRateData({...rateData,stars:v})} size={36}/></div><textarea placeholder="Cuéntanos (opcional)" value={rateData.comment} onChange={e=>setRateData({...rateData,comment:e.target.value})} rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/><button onClick={submitRev} style={{...pb,marginBottom:10}}>Enviar</button><button onClick={()=>{setShowRate(false);setRateData({id:null,stars:0,comment:""});}} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:13}}>Cancelar</button></div></div>}
 
-      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,display:"flex",justifyContent:"center",gap:40,padding:"14px 0",background:"linear-gradient(to top,#0a0a0a 70%,transparent)",zIndex:50}}><button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view!=="admin"?G:"#666"}}>🏠 INICIO</button><button onClick={()=>{if(admin)setView("admin");else setShowPin(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view==="admin"?G:"#666"}}>🔧 ADMIN</button></div>
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,display:"flex",justifyContent:"center",gap:32,padding:"14px 0",background:"linear-gradient(to top,#0a0a0a 70%,transparent)",zIndex:50}}>
+        <button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view==="home"?G:"#666"}}>🏠 INICIO</button>
+        <button onClick={()=>{setMyPhoneInput("");setMyPhone("");setView("mycitas");}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view==="mycitas"?G:"#666"}}>📋 MIS CITAS</button>
+        <button onClick={()=>{if(admin)setView("admin");else setShowPin(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view==="admin"?G:"#666"}}>🔧 ADMIN</button>
+      </div>
 
       <style>{`input::placeholder,textarea::placeholder{color:#555}select{appearance:none}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(57,255,20,.2);border-radius:2px}input[type=number]::-webkit-inner-spin-button{opacity:1}`}</style>
     </div>
