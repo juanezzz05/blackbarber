@@ -29,7 +29,7 @@ const DAYS_ES=["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
 const DAYS_FULL=["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
 const MONTHS_ES=["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 const SK="bbs_v3";
-const DCFG={weeklyDays:[1,2,3,4,5,6],startHour:9,endHour:19,slotMinutes:30,bufferMinutes:0,pin:"1234",recoveryEmail:"",recoveryPhone:"",blockedDates:{},customHours:{},blockedTimeRanges:[],customPricing:{},whatsappBarber:"",instagramUser:"",tiktokUser:""};
+const DCFG={weeklyDays:[1,2,3,4,5,6],startHour:9,endHour:19,slotMinutes:30,bufferMinutes:0,pin:"1234",recoveryEmail:"",recoveryPhone:"",blockedDates:{},customHours:{},blockedTimeRanges:[],customPricing:{},whatsappBarber:"",instagramUser:"",tiktokUser:"",announcement:""};
 
 const toStr=d=>d.toISOString().split("T")[0];
 const fmtDate=str=>{const d=new Date(str+"T12:00:00");return DAYS_FULL[d.getDay()]+" "+d.getDate()+" de "+MONTHS_ES[d.getMonth()];};
@@ -82,6 +82,11 @@ export default function App(){
   const[statsRange,setStatsRange]=useState("month");
   const[myPhoneInput,setMyPhoneInput]=useState("");
   const[myPhone,setMyPhone]=useState("");
+  const[bookCalMonth,setBookCalMonth]=useState(new Date());
+  const[rateName,setRateName]=useState("");
+  const[rateAnon,setRateAnon]=useState(false);
+  const[editingTR,setEditingTR]=useState(null);
+  const[showAnnouncement,setShowAnnouncement]=useState(true);
 
   useEffect(()=>{const d=storage.get(SK);if(d){if(d.a)setAppts(d.a);if(d.c)setCfg({...DCFG,...d.c});if(d.r)setRevs(d.r);}},[]);
   const save=useCallback((a,c,r)=>storage.set(SK,{a,c,r}),[]);
@@ -108,7 +113,8 @@ export default function App(){
   };
 
   const book=()=>{
-    if(!cName.trim()||!cPhone.trim()){notify("Completa nombre y teléfono","err");return;}
+    if(cName.trim().length<4){notify("El nombre debe tener mínimo 4 letras","err");return;}
+    if(cPhone.replace(/\D/g,"").length<7||cPhone.replace(/\D/g,"").length>11){notify("El teléfono debe tener entre 7 y 11 dígitos","err");return;}
     const dstr=toStr(selDate),fp=getPrice(selSvc,dstr);
     const n={id:Date.now(),serviceId:selSvc.id,service:selSvc.name,price:fmtPrice(fp),priceNum:fp,duration:selSvc.duration,date:dstr,timeSlot:selTime,clientName:cName.trim(),clientPhone:cPhone.trim(),status:"confirmed",createdAt:new Date().toISOString(),rated:false};
     const u=[...appts,n];setAppts(u);save(u,cfg,revs);setConfirm(n);setView("confirm");setCName("");setCPhone("");notifyBarber(n);
@@ -117,9 +123,10 @@ export default function App(){
 
   const submitRev=()=>{
     if(!rateData.stars){notify("Selecciona estrellas","err");return;}
-    const nr={id:Date.now(),apptId:rateData.id,stars:rateData.stars,comment:rateData.comment,date:new Date().toISOString(),clientName:appts.find(a=>a.id===rateData.id)?.clientName||"Cliente"};
+    const displayName=rateAnon?"Anónimo":(rateName.trim()||appts.find(a=>a.id===rateData.id)?.clientName||"Cliente");
+    const nr={id:Date.now(),apptId:rateData.id,stars:rateData.stars,comment:rateData.comment,date:new Date().toISOString(),clientName:displayName};
     const ur=[...revs,nr],ua=appts.map(a=>a.id===rateData.id?{...a,rated:true}:a);
-    setRevs(ur);setAppts(ua);save(ua,cfg,ur);setShowRate(false);setRateData({id:null,stars:0,comment:""});notify("¡Gracias por calificar!");
+    setRevs(ur);setAppts(ua);save(ua,cfg,ur);setShowRate(false);setRateData({id:null,stars:0,comment:""});setRateName("");setRateAnon(false);notify("¡Gracias por calificar!");
   };
 
   const loginAdmin=()=>{if(pin===cfg.pin){setAdmin(true);setShowPin(false);setPin("");setView("admin");}else notify("PIN incorrecto","err");};
@@ -129,14 +136,20 @@ export default function App(){
   const unblockD=d2=>{const bd={...cfg.blockedDates};delete bd[d2];const nc={...cfg,blockedDates:bd};setCfg(nc);save(appts,nc,revs);notify("Desbloqueado");};
   const saveCust=d2=>{const nc={...cfg,customHours:{...cfg.customHours,[d2]:{start:custS,end:custE}}};setCfg(nc);save(appts,nc,revs);setCustDate(null);notify("Horario guardado");};
   const rmCust=d2=>{const ch={...cfg.customHours};delete ch[d2];const nc={...cfg,customHours:ch};setCfg(nc);save(appts,nc,revs);notify("Horario eliminado");};
-  const addTimeBlock=ds=>{const nb={id:Date.now(),date:ds,startH:trStartH,startM:trStartM,endH:trEndH,endM:trEndM,reason:trReason||"Bloqueado"};const nc={...cfg,blockedTimeRanges:[...(cfg.blockedTimeRanges||[]),nb]};setCfg(nc);save(appts,nc,revs);setTrBlock(null);setTrReason("");notify("Franja bloqueada");};
+  const addTimeBlock=ds=>{const nb={id:editingTR||Date.now(),date:ds,startH:trStartH,startM:trStartM,endH:trEndH,endM:trEndM,reason:trReason||"Bloqueado"};let ranges=(cfg.blockedTimeRanges||[]);if(editingTR)ranges=ranges.filter(b=>b.id!==editingTR);const nc={...cfg,blockedTimeRanges:[...ranges,nb]};setCfg(nc);save(appts,nc,revs);setTrBlock(null);setTrReason("");setEditingTR(null);notify(editingTR?"Franja actualizada":"Franja bloqueada");};
+  const editTimeRange=b=>{setTrStartH(b.startH);setTrStartM(b.startM);setTrEndH(b.endH);setTrEndM(b.endM);setTrReason(b.reason||"");setTrBlock(b.date);setEditingTR(b.id);};
   const rmTimeBlock=id=>{const nc={...cfg,blockedTimeRanges:(cfg.blockedTimeRanges||[]).filter(b=>b.id!==id)};setCfg(nc);save(appts,nc,revs);notify("Franja eliminada");};
   const savePricing=ds=>{const ex=cfg.customPricing[ds]||{},merged={...ex};Object.entries(pricingEdits).forEach(([sid,val])=>{if(val===""||val===null)delete merged[sid];else merged[sid]=parseInt(val);});const nc={...cfg,customPricing:{...cfg.customPricing,[ds]:merged}};if(!Object.keys(merged).length)delete nc.customPricing[ds];setCfg(nc);save(appts,nc,revs);setPricingDate(null);setPricingEdits({});notify("Precios guardados");};
   const rmPricing=ds=>{const cp={...cfg.customPricing};delete cp[ds];const nc={...cfg,customPricing:cp};setCfg(nc);save(appts,nc,revs);notify("Precios eliminados");};
 
+  const deleteRev=id=>{const ur=revs.filter(r=>r.id!==id);setRevs(ur);save(appts,cfg,ur);notify("Calificación eliminada");};
+
   const exportData=()=>{const d=JSON.stringify({a:appts,c:cfg,r:revs},null,2);const b=new Blob([d],{type:"application/json"});const u=URL.createObjectURL(b);const l=document.createElement("a");l.href=u;l.download="blackbarber-backup-"+toStr(new Date())+".json";l.click();URL.revokeObjectURL(u);notify("Datos exportados");};
   const importData=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const d=JSON.parse(ev.target.result);const na=d.a||[];const nc={...DCFG,...(d.c||{})};const nr=d.r||[];setAppts(na);setCfg(nc);setRevs(nr);save(na,nc,nr);notify("Datos importados ✓");}catch{notify("Error al importar","err");}};r.readAsText(f);e.target.value="";};
-  const notifyBarber=(n)=>{const wn=(cfg.whatsappBarber||"").replace(/\D/g,"");if(!wn)return;const wm=encodeURIComponent("🔔 *Nueva Cita - Black Barber Studio*\n✂️ "+n.service+"\n📅 "+fmtDate(n.date)+"\n⏰ "+n.timeSlot+"\n👤 "+n.clientName+"\n📞 "+n.clientPhone+"\n💰 $"+n.price);window.open("https://wa.me/"+wn+"?text="+wm,"_blank");};
+  const notifyBarber=(n)=>{
+    if("Notification" in window){if(Notification.permission==="default")Notification.requestPermission();if(Notification.permission==="granted")new Notification("🔔 Nueva Cita - Black Barber Studio",{body:n.service+" · "+n.clientName+"\n"+fmtDate(n.date)+" "+n.timeSlot});}
+    const wn=(cfg.whatsappBarber||"").replace(/\D/g,"");if(!wn)return;const wm=encodeURIComponent("🔔 *Nueva Cita - Black Barber Studio*\n✂️ "+n.service+"\n📅 "+fmtDate(n.date)+"\n⏰ "+n.timeSlot+"\n👤 "+n.clientName+"\n📞 "+n.clientPhone+"\n💰 $"+n.price);window.open("https://wa.me/"+wn+"?text="+wm,"_blank");
+  };
 
   const today=toStr(new Date());
   const upcoming=appts.filter(a=>a.date>=today&&a.status!=="cancelled").sort((a,b)=>a.date.localeCompare(b.date)||a.timeSlot.localeCompare(b.timeSlot));
@@ -158,7 +171,7 @@ export default function App(){
     const bd=dc.map((c,i)=>({day:DAYS_FULL[i],count:c})).sort((a,b)=>b.count-a.count);
     const hc={};f.forEach(a=>{const h=a.timeSlot?.split(":")[0];if(h)hc[h]=(hc[h]||0)+1;});
     const bh=Object.entries(hc).map(([h,c])=>({hour:h+":00",count:c})).sort((a,b)=>b.count-a.count).slice(0,5);
-    const mr={};conf.forEach(a=>{const m=a.date.slice(0,7);if(!mr[m])mr[m]={month:m,revenue:0,count:0};mr[m].revenue+=(a.priceNum||0);mr[m].count++;});
+    const mr={};f.forEach(a=>{const m=a.date.slice(0,7);if(!mr[m])mr[m]={month:m,revenue:0,count:0};mr[m].revenue+=(a.priceNum||0);mr[m].count++;});
     const mt=Object.values(mr).sort((a,b)=>a.month.localeCompare(b.month)).slice(-6);
     return{totalRev,totalA,avgT,topC,topS,bd,bh,mt,avgRat:revs.length?(revs.reduce((s,r)=>s+r.stars,0)/revs.length).toFixed(1):"N/A",totalRevs:revs.length};
   },[appts,revs,statsRange]);
@@ -179,7 +192,15 @@ export default function App(){
       {/* HOME */}
       {view==="home"&&<div style={{padding:"0 20px"}}>
         <div style={{textAlign:"center",paddingTop:32,paddingBottom:8}}>
-          <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><Logo size={90}/></div>
+          <div style={{display:"flex",justifyContent:"center",alignItems:"flex-start",marginBottom:14,position:"relative"}}>
+            <Logo size={90}/>
+            {cfg.announcement&&showAnnouncement&&<div style={{position:"absolute",left:"calc(50% + 50px)",top:-8,maxWidth:180,animation:"popIn .4s ease"}}>
+              <div style={{background:"linear-gradient(135deg,#1a3a1a,#0f1f0f)",border:"2px solid #39ff14",borderRadius:"16px 16px 16px 4px",padding:"8px 12px",boxShadow:"0 0 16px rgba(57,255,20,.35)",position:"relative"}}>
+                <p style={{margin:0,fontSize:12,color:"#39ff14",fontWeight:600,lineHeight:1.4}}>{cfg.announcement}</p>
+                <button onClick={()=>setShowAnnouncement(false)} style={{position:"absolute",top:-8,right:-8,width:18,height:18,borderRadius:"50%",background:"#333",border:"1px solid #555",color:"#aaa",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0}}>×</button>
+              </div>
+            </div>}
+          </div>
           <h1 style={{fontSize:26,fontWeight:900,color:"#fff",margin:0,letterSpacing:2}}>BLACK BARBER <span style={{color:G,textShadow:"0 0 8px rgba(57,255,20,.4)"}}>STUDIO</span></h1>
           <p style={{fontSize:12,color:"#888",margin:"6px 0 0",lineHeight:1.5}}>📍 <a href={SHOP.mapsUrl} target="_blank" rel="noopener noreferrer" style={{color:G,textDecoration:"none"}}>{SHOP.address}</a></p>
           <div style={{display:"flex",justifyContent:"center",gap:24,marginTop:14}}>
@@ -214,13 +235,32 @@ export default function App(){
           {selDate&&cfg.customPricing[toStr(selDate)]&&cfg.customPricing[toStr(selDate)][selSvc.id]!==undefined&&<div style={{fontSize:11,color:"#FFD700",marginTop:6}}>💰 Precio especial para este día</div>}
         </div>
         <span style={{...lbl,marginTop:20}}>Elige un día</span>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:24}}>
-          {next60().slice(0,21).map(d=>{const sel=selDate&&d.toDateString()===selDate.toDateString();const isT=d.toDateString()===new Date().toDateString();const dstr=toStr(d);const hasCP=!!cfg.customPricing[dstr];
-            return(<button key={d.toISOString()} onClick={()=>{setSelDate(d);setSelTime(null);}} style={{width:64,padding:"8px 0",borderRadius:12,cursor:"pointer",background:sel?"linear-gradient(135deg,#39ff14,#00cc00)":"rgba(255,255,255,.04)",border:sel?"none":hasCP?"1px solid rgba(255,215,0,.3)":"1px solid rgba(57,255,20,.1)",color:sel?"#000":"#ccc",textAlign:"center"}}><div style={{fontSize:10,fontWeight:600,opacity:.7}}>{DAYS_ES[d.getDay()]}</div><div style={{fontSize:18,fontWeight:800,margin:"2px 0"}}>{d.getDate()}</div><div style={{fontSize:9,opacity:.6}}>{isT?"Hoy":MONTHS_ES[d.getMonth()].slice(0,3)}</div>{hasCP&&!sel&&<div style={{fontSize:7,color:"#FFD700"}}>💰</div>}</button>);
-          })}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <button onClick={()=>{const n=new Date(bookCalMonth);n.setMonth(n.getMonth()-1);setBookCalMonth(n);}} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:20,fontWeight:700,padding:"4px 10px"}}>◀</button>
+          <span style={{color:"#fff",fontWeight:700,fontSize:15}}>{MONTHS_ES[bookCalMonth.getMonth()]} {bookCalMonth.getFullYear()}</span>
+          <button onClick={()=>{const n=new Date(bookCalMonth);n.setMonth(n.getMonth()+1);setBookCalMonth(n);}} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:20,fontWeight:700,padding:"4px 10px"}}>▶</button>
         </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>{DAYS_ES.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:"#555",fontWeight:700,padding:"4px 0"}}>{d}</div>)}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:20}}>
+          {(()=>{const y=bookCalMonth.getFullYear(),mo=bookCalMonth.getMonth(),fd=new Date(y,mo,1).getDay(),dim=new Date(y,mo+1,0).getDate(),cells=[];for(let i=0;i<fd;i++)cells.push(<div key={"e"+i}/>);
+            for(let i=1;i<=dim;i++){const d=new Date(y,mo,i),dstr=toStr(d),sel=selDate&&d.toDateString()===selDate.toDateString(),past=dstr<today,blocked=!!cfg.blockedDates[dstr],notWD=!cfg.weeklyDays.includes(d.getDay()),unavail=past||blocked||notWD,hasCP=!!cfg.customPricing[dstr];
+              cells.push(<button key={dstr} disabled={unavail} onClick={()=>{if(!unavail){setSelDate(d);setSelTime(null);}}}
+                style={{padding:"6px 2px",borderRadius:8,cursor:unavail?"default":"pointer",textAlign:"center",fontSize:13,fontWeight:700,
+                  background:sel?"linear-gradient(135deg,#39ff14,#00cc00)":blocked?"rgba(255,68,68,.1)":unavail?"transparent":"rgba(255,255,255,.05)",
+                  border:sel?"none":blocked?"1px solid rgba(255,68,68,.25)":hasCP?"1px solid rgba(255,215,0,.3)":unavail?"1px solid transparent":"1px solid rgba(57,255,20,.1)",
+                  color:sel?"#000":blocked?"#ff6666":unavail?"#333":"#ccc",opacity:past?.3:1}}>
+                {i}{blocked&&<div style={{fontSize:6,color:"#ff6666"}}>✕</div>}{hasCP&&!sel&&!blocked&&<div style={{fontSize:6,color:"#FFD700"}}>💰</div>}
+              </button>);}
+            return cells;})()}
+        </div>
+        <div style={{display:"flex",gap:12,fontSize:9,color:"#888",marginBottom:16,flexWrap:"wrap"}}><span>🟢 Disponible</span><span>🔴 No disponible</span><span>🟡 Precio especial</span></div>
         {selDate&&<><span style={lbl}>Elige una hora</span><div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:24}}>{slots(selDate).length===0?<p style={{color:"#888",fontSize:14}}>No hay horarios disponibles</p>:slots(selDate).map(sl=>(<button key={sl} onClick={()=>setSelTime(sl)} style={{padding:"10px 16px",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,background:selTime===sl?G:"rgba(255,255,255,.04)",border:selTime===sl?"none":"1px solid rgba(57,255,20,.1)",color:selTime===sl?"#000":"#ccc"}}>{sl}</button>))}</div></>}
-        {selTime&&<><span style={lbl}>Tus datos</span><input type="text" placeholder="Tu nombre" value={cName} onChange={e=>setCName(e.target.value)} style={inp}/><input type="tel" placeholder="Tu WhatsApp / Teléfono" value={cPhone} onChange={e=>setCPhone(e.target.value)} style={inp}/><button onClick={book} style={pb}>CONFIRMAR CITA ✓</button></>}
+        {selTime&&<><span style={lbl}>Tus datos</span>
+          <input type="text" placeholder="Tu nombre (mín. 4 letras)" value={cName} onChange={e=>{const v=e.target.value.replace(/[^a-záéíóúüñA-ZÁÉÍÓÚÜÑ\s]/g,"");if(v.length<=30)setCName(v);}} maxLength={30} style={inp}/>
+          {cName.length>0&&cName.trim().length<4&&<div style={{fontSize:11,color:"#ff8800",marginTop:-8,marginBottom:8}}>Mínimo 4 letras</div>}
+          <input type="tel" placeholder="Tu teléfono (7-11 dígitos)" value={cPhone} onChange={e=>{const v=e.target.value.replace(/\D/g,"");if(v.length<=11)setCPhone(v);}} maxLength={11} style={inp}/>
+          {cPhone.length>0&&(cPhone.length<7||cPhone.length>11)&&<div style={{fontSize:11,color:"#ff8800",marginTop:-8,marginBottom:8}}>Entre 7 y 11 dígitos</div>}
+          <button onClick={book} style={pb}>CONFIRMAR CITA ✓</button></>}
       </div>}
 
       {/* CONFIRM */}
@@ -252,10 +292,10 @@ export default function App(){
             return(<button key={d2} disabled={past} onClick={()=>{if(!past){if(bl)unblockD(d2);else setBlocking(d2);}}} style={{padding:"4px 2px",borderRadius:8,cursor:past?"default":"pointer",background:bl?"rgba(255,68,68,.15)":hc?"rgba(57,255,20,.12)":!wd?"rgba(255,255,255,.02)":"rgba(255,255,255,.04)",border:bl?"1px solid rgba(255,68,68,.3)":hc?"1px solid rgba(57,255,20,.3)":hasCP?"1px solid rgba(255,215,0,.3)":"1px solid transparent",color:past?"#333":bl?"#ff4444":!wd?"#444":"#ccc",textAlign:"center",fontSize:12,fontWeight:700,opacity:past?.4:1}}>{d.getDate()}{ac>0&&<div style={{fontSize:7,color:G}}>{ac}</div>}{bl&&<div style={{fontSize:6,color:"#ff4444"}}>✕</div>}{hasTR&&!bl&&<div style={{fontSize:6,color:"#ff8800"}}>⏱</div>}{hc&&!bl&&<div style={{fontSize:6,color:G}}>⏰</div>}{hasCP&&!bl&&<div style={{fontSize:6,color:"#FFD700"}}>💰</div>}</button>);
           })}</div>
           <div style={{display:"flex",flexWrap:"wrap",gap:8,fontSize:9,color:"#888",marginBottom:16}}><span>🔴 Bloq.</span><span>🟠 Horas bloq.</span><span>🟢 Horario</span><span>🟡 Precios</span></div>
-          {(cfg.blockedTimeRanges||[]).filter(b=>b.date>=today).length>0&&<><span style={lbl}>Franjas bloqueadas</span>{(cfg.blockedTimeRanges||[]).filter(b=>b.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).map(b=>(<div key={b.id} style={{...crd,display:"flex",justifyContent:"space-between",alignItems:"center",borderColor:"rgba(255,136,0,.2)"}}><div><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(b.date)}</div><div style={{color:"#ff8800",fontSize:12}}>{String(b.startH).padStart(2,"0")}:{String(b.startM).padStart(2,"0")} — {String(b.endH).padStart(2,"0")}:{String(b.endM).padStart(2,"0")}</div>{b.reason&&<div style={{fontSize:10,color:"#888"}}>{b.reason}</div>}</div><button onClick={()=>rmTimeBlock(b.id)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:16}}>✕</button></div>))}</>}
-          {Object.keys(cfg.customPricing).filter(d=>d>=today).length>0&&<><span style={{...lbl,marginTop:8}}>Precios especiales</span>{Object.entries(cfg.customPricing).filter(([d])=>d>=today).sort().map(([d2,prices])=>(<div key={d2} style={{...crd,borderColor:"rgba(255,215,0,.2)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(d2)}</div><button onClick={()=>rmPricing(d2)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:14}}>✕</button></div>{Object.entries(prices).map(([sid,p])=>{const svc=ALL_SERVICES.find(s=>s.id===parseInt(sid));return svc?<div key={sid} style={{fontSize:11,color:"#FFD700"}}>• {svc.name}: ${fmtPrice(p)}</div>:null;})}</div>))}</>}
-          {Object.keys(cfg.customHours).filter(d=>d>=today).length>0&&<><span style={{...lbl,marginTop:8}}>Horarios personalizados</span>{Object.entries(cfg.customHours).filter(([d])=>d>=today).sort().map(([d2,h])=>(<div key={d2} style={{...crd,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(d2)}</div><div style={{color:G,fontSize:12}}>{h.start}:00 - {h.end}:00</div></div><button onClick={()=>rmCust(d2)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:16}}>✕</button></div>))}</>}
-          {Object.keys(cfg.blockedDates).filter(d=>d>=today).length>0&&<><span style={{...lbl,marginTop:8}}>Días bloqueados</span>{Object.entries(cfg.blockedDates).filter(([d])=>d>=today).sort().map(([d2,reason])=>(<div key={d2} style={{...crd,display:"flex",justifyContent:"space-between",alignItems:"center",borderColor:"rgba(255,68,68,.2)"}}><div><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(d2)}</div><div style={{color:"#ff4444",fontSize:11}}>{reason}</div></div><button onClick={()=>unblockD(d2)} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:11,fontWeight:600}}>Desbloquear</button></div>))}</>}
+          {(cfg.blockedTimeRanges||[]).filter(b=>b.date>=today).length>0&&<><span style={lbl}>Franjas bloqueadas</span>{(cfg.blockedTimeRanges||[]).filter(b=>b.date>=today).sort((a,b)=>a.date.localeCompare(b.date)).map(b=>(<div key={b.id} style={{...crd,borderColor:"rgba(255,136,0,.2)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}><div><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(b.date)}</div><div style={{color:"#ff8800",fontSize:12}}>{String(b.startH).padStart(2,"0")}:{String(b.startM).padStart(2,"0")} — {String(b.endH).padStart(2,"0")}:{String(b.endM).padStart(2,"0")}</div>{b.reason&&<div style={{fontSize:10,color:"#888"}}>{b.reason}</div>}</div><div style={{display:"flex",gap:8}}><button onClick={()=>editTimeRange(b)} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:14}}>✏️</button><button onClick={()=>rmTimeBlock(b.id)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:14}}>✕</button></div></div></div>))}</>}
+          {Object.keys(cfg.customPricing).filter(d=>d>=today).length>0&&<><span style={{...lbl,marginTop:8}}>Precios especiales</span>{Object.entries(cfg.customPricing).filter(([d])=>d>=today).sort().map(([d2,prices])=>(<div key={d2} style={{...crd,borderColor:"rgba(255,215,0,.2)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(d2)}</div><div style={{display:"flex",gap:8}}><button onClick={()=>{const ex=cfg.customPricing[d2]||{};const ed={};ALL_SERVICES.forEach(s=>{ed[s.id]=ex[s.id]!==undefined?ex[s.id]:"";});setPricingEdits(ed);setPricingDate(d2);}} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:14}}>✏️</button><button onClick={()=>rmPricing(d2)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:14}}>✕</button></div></div>{Object.entries(prices).map(([sid,p])=>{const svc=ALL_SERVICES.find(s=>s.id===parseInt(sid));return svc?<div key={sid} style={{fontSize:11,color:"#FFD700"}}>• {svc.name}: ${fmtPrice(p)}</div>:null;})}</div>))}</>}
+          {Object.keys(cfg.customHours).filter(d=>d>=today).length>0&&<><span style={{...lbl,marginTop:8}}>Horarios personalizados</span>{Object.entries(cfg.customHours).filter(([d])=>d>=today).sort().map(([d2,h])=>(<div key={d2} style={{...crd,display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(d2)}</div><div style={{color:G,fontSize:12}}>{h.start}:00 - {h.end}:00</div></div><div style={{display:"flex",gap:8}}><button onClick={()=>{setCustS(h.start);setCustE(h.end);setCustDate(d2);}} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:14}}>✏️</button><button onClick={()=>rmCust(d2)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:14}}>✕</button></div></div>))}</>}
+          {Object.keys(cfg.blockedDates).filter(d=>d>=today).length>0&&<><span style={{...lbl,marginTop:8}}>Días bloqueados</span>{Object.entries(cfg.blockedDates).filter(([d])=>d>=today).sort().map(([d2,reason])=>(<div key={d2} style={{...crd,borderColor:"rgba(255,68,68,.2)"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{color:"#fff",fontWeight:600,fontSize:12}}>{fmtDate(d2)}</div><div style={{color:"#ff4444",fontSize:11}}>{reason}</div></div><div style={{display:"flex",gap:8}}><button onClick={()=>{setBlockReason(reason);setBlocking(d2);}} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:14}}>✏️</button><button onClick={()=>unblockD(d2)} style={{background:"none",border:"none",color:G,cursor:"pointer",fontSize:11,fontWeight:600}}>Desbloquear</button></div></div></div>))}</>}
         </>}
 
         {aTab==="stats"&&<><span style={lbl}>Estadísticas</span>
@@ -271,7 +311,7 @@ export default function App(){
           </>}
         </>}
 
-        {aTab==="revs"&&<><span style={lbl}>Calificaciones ({revs.length})</span>{revs.length>0&&<div style={{...crd,background:"rgba(255,215,0,.06)",border:"1px solid rgba(255,215,0,.15)",textAlign:"center",marginBottom:16}}><div style={{fontSize:36,fontWeight:900,color:"#FFD700"}}>{avgR}</div><Stars value={Math.round(avgR)} size={20}/><div style={{fontSize:12,color:"#888",marginTop:4}}>{revs.length} calificaciones</div></div>}{revs.length===0?<p style={{color:"#666",fontSize:14,textAlign:"center",padding:20}}>Sin calificaciones</p>:revs.slice().reverse().map(r=>(<div key={r.id} style={crd}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{fontWeight:700,color:"#fff",fontSize:13}}>{r.clientName}</span><Stars value={r.stars} size={14}/></div>{r.comment&&<p style={{margin:"4px 0 0",fontSize:13,color:"#aaa"}}>{r.comment}</p>}<div style={{fontSize:10,color:"#555",marginTop:6}}>{new Date(r.date).toLocaleDateString()}</div></div>))}</>}
+        {aTab==="revs"&&<><span style={lbl}>Calificaciones ({revs.length})</span>{revs.length>0&&<div style={{...crd,background:"rgba(255,215,0,.06)",border:"1px solid rgba(255,215,0,.15)",textAlign:"center",marginBottom:16}}><div style={{fontSize:36,fontWeight:900,color:"#FFD700"}}>{avgR}</div><Stars value={Math.round(avgR)} size={20}/><div style={{fontSize:12,color:"#888",marginTop:4}}>{revs.length} calificaciones</div></div>}{revs.length===0?<p style={{color:"#666",fontSize:14,textAlign:"center",padding:20}}>Sin calificaciones</p>:revs.slice().reverse().map(r=>(<div key={r.id} style={crd}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}><span style={{fontWeight:700,color:"#fff",fontSize:13}}>{r.clientName}</span><div style={{display:"flex",alignItems:"center",gap:8}}><Stars value={r.stars} size={14}/><button onClick={()=>deleteRev(r.id)} style={{background:"none",border:"none",color:"#ff4444",cursor:"pointer",fontSize:14,padding:0}}>🗑</button></div></div>{r.comment&&<p style={{margin:"4px 0 0",fontSize:13,color:"#aaa"}}>{r.comment}</p>}<div style={{fontSize:10,color:"#555",marginTop:6}}>{new Date(r.date).toLocaleDateString()}</div></div>))}</>}
 
         {aTab==="cfg"&&<><span style={lbl}>Configuración</span>{!cfgEdit?<>
           <div style={crd}><div style={{fontSize:12,color:"#888",marginBottom:6}}>Días de trabajo</div><div style={{color:"#fff",fontWeight:600,fontSize:14}}>{cfg.weeklyDays.map(d=>DAYS_ES[d]).join(", ")}</div></div>
@@ -291,6 +331,7 @@ export default function App(){
           <div style={{marginBottom:16}}><label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>PIN:</label><input type="text" value={cfgEdit.pin} onChange={e=>setCfgEdit({...cfgEdit,pin:e.target.value})} style={inp}/></div>
           <div style={{padding:14,borderRadius:12,background:"rgba(57,255,20,.04)",border:"1px solid rgba(57,255,20,.1)",marginBottom:16}}><label style={{fontSize:12,color:G,display:"block",marginBottom:8,fontWeight:700}}>🔐 Recuperación</label><input type="email" placeholder="Correo" value={cfgEdit.recoveryEmail||""} onChange={e=>setCfgEdit({...cfgEdit,recoveryEmail:e.target.value})} style={inp}/><input type="tel" placeholder="Teléfono" value={cfgEdit.recoveryPhone||""} onChange={e=>setCfgEdit({...cfgEdit,recoveryPhone:e.target.value})} style={{...inp,marginBottom:0}}/></div>
           <div style={{padding:14,borderRadius:12,background:"rgba(37,211,102,.04)",border:"1px solid rgba(37,211,102,.15)",marginBottom:16}}><label style={{fontSize:12,color:"#25D366",display:"block",marginBottom:8,fontWeight:700}}>📱 Redes sociales</label><input type="tel" placeholder="WhatsApp barbero (ej: 573001234567)" value={cfgEdit.whatsappBarber||""} onChange={e=>setCfgEdit({...cfgEdit,whatsappBarber:e.target.value})} style={inp}/><input type="text" placeholder="Instagram (usuario sin @)" value={cfgEdit.instagramUser||""} onChange={e=>setCfgEdit({...cfgEdit,instagramUser:e.target.value})} style={inp}/><input type="text" placeholder="TikTok (usuario sin @)" value={cfgEdit.tiktokUser||""} onChange={e=>setCfgEdit({...cfgEdit,tiktokUser:e.target.value})} style={{...inp,marginBottom:0}}/></div>
+          <div style={{padding:14,borderRadius:12,background:"rgba(57,255,20,.04)",border:"1px solid rgba(57,255,20,.12)",marginBottom:16}}><label style={{fontSize:12,color:G,display:"block",marginBottom:6,fontWeight:700}}>📢 Anuncio (nube junto al logo)</label><textarea placeholder="Ej: ¡Esta semana 2x1 en cortes! Llega antes de las 12." value={cfgEdit.announcement||""} onChange={e=>setCfgEdit({...cfgEdit,announcement:e.target.value})} rows={3} maxLength={120} style={{...inp,resize:"vertical",fontFamily:"inherit",marginBottom:4}}/><div style={{fontSize:10,color:"#555",textAlign:"right"}}>{(cfgEdit.announcement||"").length}/120</div></div>
           <div style={{display:"flex",gap:10}}><button onClick={saveCfg} style={{flex:1,padding:12,borderRadius:10,border:"none",cursor:"pointer",background:G,color:"#000",fontWeight:700}}>Guardar</button><button onClick={()=>setCfgEdit(null)} style={{flex:1,padding:12,borderRadius:10,cursor:"pointer",background:"transparent",border:"1px solid #888",color:"#888",fontWeight:600}}>Cancelar</button></div>
         </div>}</>}
       </div>}
@@ -325,7 +366,19 @@ export default function App(){
 
       {pricingDate&&<div style={ov}><div style={{...mod,textAlign:"center"}}><h3 style={{color:"#FFD700",margin:"0 0 6px",fontSize:16}}>💰 Precios especiales</h3><p style={{color:"#888",fontSize:12,margin:"0 0 12px"}}>{fmtDate(pricingDate)}</p><p style={{fontSize:11,color:"#aaa",margin:"0 0 12px"}}>Vacío = precio normal</p><div style={{textAlign:"left",maxHeight:280,overflowY:"auto"}}>{ALL_SERVICES.filter(s=>!s.promo).map(svc=>(<div key={svc.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid rgba(255,255,255,.05)"}}><div style={{flex:1}}><div style={{color:"#fff",fontSize:12,fontWeight:600}}>{svc.icon} {svc.name}</div><div style={{fontSize:10,color:"#888"}}>Normal: ${svc.priceLabel}</div></div><div style={{width:90}}><input type="number" placeholder={String(svc.price)} value={pricingEdits[svc.id]===undefined?"":pricingEdits[svc.id]} onChange={e=>setPricingEdits({...pricingEdits,[svc.id]:e.target.value===""?"":e.target.value})} style={{...inp,width:"100%",marginBottom:0,padding:"8px",fontSize:13,textAlign:"right"}}/></div></div>))}</div><button onClick={()=>savePricing(pricingDate)} style={{...pb,fontSize:14,padding:12,marginTop:12,marginBottom:8}}>Guardar</button><button onClick={()=>{setPricingDate(null);setPricingEdits({});}} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:13}}>Cancelar</button></div></div>}
 
-      {showRate&&<div style={ov}><div style={{...mod,textAlign:"center"}}><div style={{fontSize:32,marginBottom:8}}>⭐</div><h3 style={{color:"#fff",margin:"0 0 16px"}}>¿Cómo fue tu experiencia?</h3><div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Stars value={rateData.stars} onChange={v=>setRateData({...rateData,stars:v})} size={36}/></div><textarea placeholder="Cuéntanos (opcional)" value={rateData.comment} onChange={e=>setRateData({...rateData,comment:e.target.value})} rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/><button onClick={submitRev} style={{...pb,marginBottom:10}}>Enviar</button><button onClick={()=>{setShowRate(false);setRateData({id:null,stars:0,comment:""});}} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:13}}>Cancelar</button></div></div>}
+      {showRate&&<div style={ov}><div style={{...mod,textAlign:"center"}}>
+        <div style={{fontSize:32,marginBottom:8}}>⭐</div>
+        <h3 style={{color:"#fff",margin:"0 0 16px"}}>¿Cómo fue tu experiencia?</h3>
+        <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><Stars value={rateData.stars} onChange={v=>setRateData({...rateData,stars:v})} size={36}/></div>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <button onClick={()=>{setRateAnon(false);}} style={{flex:1,padding:"8px 0",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,background:!rateAnon?"rgba(57,255,20,.15)":"rgba(255,255,255,.04)",border:!rateAnon?"1px solid "+G:"1px solid rgba(255,255,255,.08)",color:!rateAnon?G:"#888"}}>Con nombre</button>
+          <button onClick={()=>{setRateAnon(true);setRateName("");}} style={{flex:1,padding:"8px 0",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,background:rateAnon?"rgba(57,255,20,.15)":"rgba(255,255,255,.04)",border:rateAnon?"1px solid "+G:"1px solid rgba(255,255,255,.08)",color:rateAnon?G:"#888"}}>Anónimo</button>
+        </div>
+        {!rateAnon&&<input type="text" placeholder="Tu nombre (o déjalo en blanco para usar el registrado)" value={rateName} onChange={e=>setRateName(e.target.value)} style={inp}/>}
+        <textarea placeholder="Cuéntanos tu experiencia (opcional)" value={rateData.comment} onChange={e=>setRateData({...rateData,comment:e.target.value})} rows={3} style={{...inp,resize:"vertical",fontFamily:"inherit"}}/>
+        <button onClick={submitRev} style={{...pb,marginBottom:10}}>Enviar calificación</button>
+        <button onClick={()=>{setShowRate(false);setRateData({id:null,stars:0,comment:""});setRateName("");setRateAnon(false);}} style={{background:"none",border:"none",color:"#666",cursor:"pointer",fontSize:13}}>Cancelar</button>
+      </div></div>}
 
       <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:480,display:"flex",justifyContent:"center",gap:32,padding:"14px 0",background:"linear-gradient(to top,#0a0a0a 70%,transparent)",zIndex:50}}>
         <button onClick={()=>setView("home")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view==="home"?G:"#666"}}>🏠 INICIO</button>
@@ -333,7 +386,7 @@ export default function App(){
         <button onClick={()=>{if(admin)setView("admin");else setShowPin(true);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,letterSpacing:1,color:view==="admin"?G:"#666"}}>🔧 ADMIN</button>
       </div>
 
-      <style>{`input::placeholder,textarea::placeholder{color:#555}select{appearance:none}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(57,255,20,.2);border-radius:2px}input[type=number]::-webkit-inner-spin-button{opacity:1}`}</style>
+      <style>{`input::placeholder,textarea::placeholder{color:#555}select{appearance:none}::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:rgba(57,255,20,.2);border-radius:2px}input[type=number]::-webkit-inner-spin-button{opacity:1}@keyframes popIn{from{opacity:0;transform:scale(.7) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}`}</style>
     </div>
   );
 }
